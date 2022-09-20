@@ -25,11 +25,13 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+Further development of Flagmatic is supported by ERC.
+http://cordis.europa.eu/project/rcn/104324_en.html
 """
 
 import sys
 
-from sage.rings.arith import factorial
+from sage.arith.all import factorial
 from sage.combinat.all import UnorderedTuples, Tuples, Combinations, Permutations, Compositions, Subsets
 from sage.rings.all import Integer, RationalField
 from sage.interfaces.gap import gap

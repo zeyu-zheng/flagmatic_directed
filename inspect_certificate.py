@@ -31,9 +31,11 @@ import itertools
 import json
 import re
 import sys
+import numpy
+import subprocess
 
 HELP_TEXT = """
-Usage: inspect_certificate.py CERTIFICATE OPTIONS
+Usage: inspect_certificate.py CERTIFICATE [BOUND TAU_GRAPH B_GRAPH CERTIFICATE_TAU [CERTIFICATE_B]]  OPTIONS
 Possible options:
 --help                       Display this message.
 --admissible-graphs          Display the admissible graphs.
@@ -45,6 +47,8 @@ Possible options:
 --verify-bound               Verify the bound.
 --sharp-graphs               Display the admissible graphs that are sharp.
 --flag-algebra-coefficients  Display each admissible graph's flag algebra coefficient.
+--stability                  Verify stability as well.
+--log                        Log the bound.
 """
 
 try:
@@ -59,13 +63,13 @@ try:
     opts, args = getopt.gnu_getopt(sys.argv[1:], "", ["help", "admissible-graphs",
                                                       "flags", "r-matrices", "qdash-matrices",
                                                       "pair-densities", "q-matrices", "verify-bound",
-                                                      "sharp-graphs", "flag-algebra-coefficients"])
+                                                      "sharp-graphs", "flag-algebra-coefficients", "stability", "log"])
 
 except getopt.GetoptError:
     should_print_help = True
     opts, args = ((), ())
 
-if len(args) != 1:
+if len(args) < 1:
     should_print_help = True
 
 action = ""
@@ -91,13 +95,48 @@ for o, a in opts:
         action = "print sharp graphs"
     elif o == "--flag-algebra-coefficients":
         action = "print flag algebra coefficients"
-
+    elif o == "--stability":
+        action = "verify stability"
+    elif o == "--log":
+        action = "log"
+        
 if should_print_help:
     print HELP_TEXT
     sys.exit(0)
 
 certificate_filename = args[0]
+lower_bound = ""
+tau = ""
+B = ""
+certificate_filename_tau = ""
 
+if action == "verify stability":
+    if using_sage == False:
+        print "This step needs Sage. Please run 'sage -python inspect_certificate.py ...'."
+        sys.exit()
+        
+    if len(args) < 4:
+        raise ValueError("If '--stability' option chosen, need at least 4 arguments: certificate, bound, tau, B.\n")
+
+    # target bound
+    lb = map(int, args[1].split("/"))
+    lower_bound = Integer(lb[0])/lb[1] #fractions.Fraction(lb[0],lb[1])
+    print "Lower bound:", lower_bound
+    # tau graph
+    tau = str(args[2])
+    print "Type tau:", tau
+    # B graph
+    B = str(args[3])
+    print "Graph B:", B
+
+    if tau != "1:" and len(args) < 5:
+        raise ValueError("With '--stability' option and tau is not '1:', second certificate is needed.\n")
+    # cert_tau
+    if tau != "1:":
+        certificate_filename_tau = str(args[4])
+        print "Certificate when tau is forbidden:", certificate_filename_tau
+
+    
 try:
     if certificate_filename[-3:] == ".gz":
         import gzip
@@ -110,6 +149,7 @@ try:
 except IOError:
     sys.stdout.write("Could not open certificate.\n")
     sys.exit(1)
+print
 
 certificate = json.load(certf)
 
@@ -152,7 +192,42 @@ else:
 
 oriented = "oriented" in certificate["description"]
 
+def make_number(ch):
+    try:
+        CH = ch.capitalize()
+        return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".index(CH)
+    except ValueError:
+        print "Failed to parse..."
 
+
+def kill_twins(g):
+    """
+    Identifies all twins in g and returns the resulting graph.
+
+    INPUT:
+    g - graph to be de-twinned; in SAGE format
+    """
+    twins = None
+    twin_free = False
+    while not twin_free:
+        found_twins = False
+        twin = None
+        gvertices = g.vertices()
+        for i in range(g.num_verts()-1):
+            for j in range(i+1,g.num_verts()):
+                if g.vertex_boundary({gvertices[i]}) == g.vertex_boundary({gvertices[j]}):
+                    twin = vertices[i]
+                    found_twins = True
+                    break
+            if found_twins:
+                break
+        if found_twins:
+            g.delete_vertex(twin)
+        else:
+            twin_free = True
+    return g
+
+    
 class Flag(object):
 
     edge_size = edge_size
@@ -169,17 +244,35 @@ class Flag(object):
             return
 
         m = re.match(r'(\d+):(\d*)(?:\((\d+)\)|)', s)
-        if not m:
-            raise ValueError
-        n = int(m.group(1))
-        t = int(m.group(3)) if m.group(3) else 0
-        if not (0 <= n <= 9 and 0 <= t <= n):
-            raise ValueError
+        edges_str = ""
+        if m:
+            n = int(m.group(1))
+            t = int(m.group(3)) if m.group(3) else 0
+            if not (0 <= n <= 9 and 0 <= t <= n):
+                raise ValueError
 
+        elif s[1] == ':': # only get here if parsing above failed
+            n = int(make_number(s[0]))
+            t = 0
+            if s[-1] == ')':
+                t = int(make_number(s[-2]))
+                edges_str = s[2:-3]
+            else:
+                edges_str = s[2:]
+            
+        else:
+            raise ValueError("Wrong representation.")
+        
+
+            
         edges = []
-        for i in range(0, len(m.group(2)), self.edge_size):
-            edges.append(tuple(map(int, m.group(2)[i:i + self.edge_size])))
-
+        if m:
+            for i in range(0, len(m.group(2)), self.edge_size):
+                edges.append(tuple(map(int, m.group(2)[i:i + self.edge_size])))
+        else:
+            for i in range(0, len(edges_str), self.edge_size):
+                edges.append(tuple(map(make_number, edges_str[i:i+self.edge_size])))
+                
         self.n = n
         self.t = t
         self.edges = tuple(edges)
@@ -248,7 +341,26 @@ class Flag(object):
         h.edges = tuple(edges)
         return h
 
+    def delete_vertex(self, vi):
+        # delete vi without normalizing edges
+        if self.t > 0:
+            raise ValueError("Can only delete vertices of unlabelled graphs.\n")
+        if not 1 <= vi <= n:
+            raise ValueError("Vertex index (1,...,n) must be in that range.\n")
 
+        ledges = list(self.edges)
+        newledges = list()
+        for e in ledges:
+            if vi in e:
+                continue
+            else:
+                newledges.append(e)
+
+        self.n = self.n-1
+        self.edges = tuple(newledges)
+
+
+                
 admissible_graphs = [Flag(s) for s in certificate["admissible_graphs"]]
 types = [Flag(s) for s in certificate["types"]]
 flags = [[Flag(s) for s in f] for f in certificate["flags"]]
@@ -464,3 +576,418 @@ if action == "print flag algebra coefficients":
     for i, g in enumerate(admissible_graphs):
         print "{}. ({}) : {}".format(i + 1, g, bounds[i])
     sys.exit(0)
+
+
+
+
+if action == "log":
+    try:
+        f = open("bound.txt", 'w')
+        f.write(str(bound))
+        print "Bound logged to 'bound.txt'."
+        f.close()
+    except IOError:
+        print "Couldn't open 'bound.txt' file for writing."
+        sys.exit()
+        
+
+
+if action == "verify stability":
+
+    print "\nChecking conditions for robust stability:"
+    
+    # Check that each forbidden graph is twin-free
+    # --------------------------------------------
+    claim1 = False # assume to begin with
+    
+    # read forbidden graphs from certificate (in description)
+    forbidden_graphs = list()
+    begin = False
+    descr = certificate["description"]
+    if "forbid" in descr:
+        descr_list = descr.strip().split(" ")
+        for i in range(len(descr_list)):
+            item = descr_list[i]
+            if item == "forbid":
+                begin = True
+                continue
+            if begin == True:
+                if item[-1] == ";" or item[-1] == ",":
+                    item = item[:-1]
+                if item[1] == ":":
+                    forbidden_graphs.append(Flag(item))
+
+
+    #check twin-freeness
+    twins_exist = False
+    twins_graph = None # forbidden graph B that has twins
+    twins_vx = None # 2-tuple of x,y twins in B
+    for g in forbidden_graphs:
+        
+        if twins_exist: # only continue if no twins found in previous graphs
+            break
+        
+        vg = range(1,g.n+1) # vertices of g
+        eg = g.edges # tuple of tuples
+        
+        for x in vg:
+            
+            if twins_exist: # only continue if no twins found for previous x vertices
+                break
+            
+            Nx = list()
+            for (a,b) in eg:
+                if a == x:
+                    Nx.append(b)
+                elif b == x:
+                    Nx.append(a)
+                    
+            for y in range(x+1,g.n+1):
+                Ny = list()
+                if not ((x,y) in eg or (y,x) in eg):
+                    for (a,b) in eg or (b,a) in eg:
+                        if a == y:
+                            Ny.append(b)
+                        elif b == x:
+                            Ny.append(b)
+                            
+                    # compare with Nx
+                    if set(Nx) & set(Ny):
+                        twins_exist = True
+                        twins_graph = g
+                        twins_vx = (x,y)
+                        break
+
+        
+    if twins_exist:
+        print "\033[31m[FAIL] \033[mAt least one of the forbidden graphs is NOT twin-free."
+        print "       Witness:", str(twins_graph)+". Consider vertices", twins_vx[0], "and", str(twins_vx[1])+ ".\n"
+    else:
+        claim1 = True
+        print "\033[32m[OK]   \033[mAll forbidden graphs are twin-free."
+
+
+    # Check that the upper bound is tight
+    # -----------------------------------
+    claim2 = False
+    if bound == lower_bound:
+        claim2 = True
+        print "\033[32m[OK]   \033[mLower bound and upper bound match", str(bound)+"."
+    else:
+        print "\033[31m[FAIL] \033[mLower bound is", lower_bound, "and upper bound is", str(bound)+"."
+
+    
+    # Check that |tau| <= N-2
+    # -----------------------
+    tgraph = Flag(tau)
+    claim3 = (tgraph.n <= admissible_graphs[0].n)
+
+    if claim3:
+        print "\033[32m[OK]   \033[mTau is on", tgraph.n, "vertices, which is at most", admissible_graphs[0].n-2,"=",admissible_graphs[0].n,"- 2."
+    else:
+        print "\033[31m[FAIL] \033[mThe order of tau is wrong:", str(tgraph.n)+". It must be at most", str(admissible_graphs[0].n)+"."
+
+
+
+    # Check that all sharp graphs have a strong hom into the construction graph B
+    # (strong hom = preserves edges & nonedges; no need injective)
+    # ---------------------------------------------------------------------------
+    claim4 = False
+    
+    # sharp graphs
+    sharp_graphs = list()
+    for i, g in enumerate(admissible_graphs):
+        if bounds[i] == bound:
+            sharp_graphs.append(g)
+
+    # convert sharp graphs to Sage form
+    sharp_graphs_sage = list()
+    for sg in sharp_graphs:
+        g_str = sg.__repr__()
+        g = Graph(sg.n)
+        for i in range(2,len(g_str),2):
+            g.add_edge((int(g_str[i])-1, int(g_str[i+1])-1))
+        sharp_graphs_sage.append(g)
+
+    # IDEA: contract twins until no more twins; then check if subgraph of B
+    if B == "g:12131415162728292a373b3c3d484b4e4f595c5e5g6a6d6f6g7e7f7g8c8d8g9b9d9fabacaebgcfde": # comparing literally to save time!!!
+        C = graphs.ClebschGraph() # sage graph exists in Sage, they have tools
+    else:
+        C = Graph(make_number(B[0]))
+        for i in range(2,len(B),2):
+            C.add_edge((make_number(B[i])-1, make_number(B[i+1])-1))
+            
+            
+    # deal with same neighbourhoods
+    failed = list()
+    num_graphs_left = len(sharp_graphs_sage)
+    for sg in sharp_graphs_sage:
+        twins = None
+        twin_free = False
+        while not twin_free:
+            found_twins = False
+            twin = None
+            gvertices = sg.vertices()
+            for i in range(sg.num_verts()-1):
+                for j in range(i+1,sg.num_verts()):
+                    if sg.vertex_boundary({gvertices[i]}) == sg.vertex_boundary({gvertices[j]}):
+                        twin = gvertices[i]
+                        found_twins = True
+                        break
+                if found_twins:
+                    break
+            if found_twins:
+                sg.delete_vertex(twin)
+            else:
+                twin_free = True
+
+        # Check if this contracted sharp graph has induced+injective hom into B
+        h = C.subgraph_search(sg, induced=True)
+        if h == None:
+            failed.append(sg)
+            num_graphs_left -= 1
+
+    if not failed:
+        claim4 = True
+        print "\033[32m[OK]   \033[mAll sharp graphs admit strong hom into B."
+    else:
+        print "\033[31m[FAIL] \033[mNOT all sharp graphs admit strong homomorphism into B."
+        print "       e.g. no strong hom from", failed[0].edges(labels=None), "into B", "("+B+")."
+
+
+
+    # There is exactly one strong homomorphism from tau to B (up to automorph of tau)
+    # -------------------------------------------------------------------------------
+    claim5 = False
+    strong_hom = None # will store the unique strong hom if found
+
+    # !!!
+    # treat CLEBSCH graph separately, too big and Sage has tools
+    Tg = Flag(tau)
+    Tg = Tg.minimal_isomorph()
+    Tau = Flag("6:1223344551")
+    Tau = Tau.minimal_isomorph()
+    if B == "g:12131415162728292a373b3c3d484b4e4f595c5e5g6a6d6f6g7e7f7g8c8d8g9b9d9fabacaebgcfde" and Tg == Tau: # comparing B literally!!!
+        Bgraph = graphs.ClebschGraph()
+        Tgraph = Graph(Tau.n)
+        for e1,e2 in Tg.edges:
+            Tgraph.add_edge((e1-1,e2-1))
+            
+        autB = Bgraph.automorphism_group()
+        card_autB = autB.cardinality()
+        count_T_in_B = Bgraph.subgraph_search_count(Tgraph, induced=True)
+        if count_T_in_B == card_autB: # there's exactly 1 strong hom (up to automorph grp of tau)
+            Tcopy_in_B = Bgraph.subgraph_search(Tgraph, induced=True)
+            strong_hom = Tcopy_in_B.vertices()
+            claim5 = True
+            print "\033[32m[OK]   \033[mThere is exactly 1 strong homomorphism from tau into B."
+        else:
+            print "\033[31m[FAIL] \033[mThe number of strong homomorphisms from tau to B is wrong."
+
+    else:
+        Bg = Flag(B)
+        Bgraph = Bg.minimal_isomorph()
+        Tgraph = Tg.minimal_isomorph()
+        # set-up
+        otuples = Tuples(range(1, Bgraph.n+1), Tgraph.n)
+        possible_edges_t = Combinations(range(1,Tgraph.n+1), 2) # edge size = 2, assume
+        coTgraph = Flag(Tgraph.__repr__()) # easiest way to make a copy
+        coTgraph.edges = tuple([tuple(x) for x in possible_edges_t if tuple(x) not in Tgraph.edges])
+        possible_edges_B = Combinations(range(1, Bgraph.n+1), 2)
+        coBgraph = Flag(Bgraph.__repr__())
+        coBgraph.edges = tuple([tuple(x) for x in possible_edges_B if tuple(x) not in Bgraph.edges])
+
+        if Bgraph.n > 0:
+            # make use of Sage functions
+            sageB = Graph(Bgraph.n)
+            for e in Bgraph.edges:
+                sageB.add_edge(e)
+            Baut_group_order = sageB.automorphism_group().order()
+            strong_hom_count = 0
+            for tpl in otuples:
+                # for each map into B, check if it induces T
+                edge_missing = False
+                for edge in Tgraph.edges:
+                    if edge_missing == True:
+                        break
+                    imedge1 = (tpl[edge[0]-1],tpl[edge[1]-1])
+                    imedge2 = (tpl[edge[1]-1],tpl[edge[0]-1])
+                    if imedge1 in Bgraph.edges or imedge2 in Bgraph.edges:
+                        continue
+                    else:
+                        edge_missing = True
+                        break
+                if edge_missing==True:
+                    continue # go to next perm
+                coedge_missing = False
+                for coedge in coTgraph.edges:
+                    if coedge_missing == True:
+                        break
+                    imcoedge1 = (tpl[coedge[0]-1],tpl[coedge[1]-1])
+                    imcoedge2 = (tpl[coedge[1]-1],tpl[coedge[0]-1])
+                    if imcoedge1 in coBgraph.edges or imcoedge2 in coBgraph.edges:
+                        continue
+                    else:
+                        coedge_missing = True
+                        break
+
+                if coedge_missing or edge_missing:
+                    continue # this wasn't a strong hom embedding of tau into B
+                else:
+                    strong_hom = tpl
+                    strong_hom_count += 1
+
+            if strong_hom_count == Baut_group_order: # there's exactly 1 strong hom (up to automorph grp of tau)
+                claim5 = True
+                strong_hom = [x-1 for x in strong_hom]
+                print "\033[32m[OK]   \033[mThere is exactly 1 strong homomorphism from tau into B."
+            else:
+                print "\033[31m[FAIL] \033[mThe number of strong homomorphisms from tau to B is wrong."
+
+
+
+    # Different vertices of B attach differently to an embedding of tau in it
+    # -----------------------------------------------------------------------
+    claim6 = False
+    
+    found_identical_neighbourhoods = False
+    witness_neighbourhood = None
+    
+    # take strong_hom from previous search
+    if strong_hom == None:
+        print "\033[31m[FAIL] \033[mThere is no strong homomorphism from tau into B. There should be exactly 1."
+
+    else:
+        strong_hom = set(strong_hom)
+
+        # prepare B and Tau
+        Tg = Flag(tau)
+        Tg = Tg.minimal_isomorph()
+        Tau = Flag("6:1223344551")
+        Tau = Tau.minimal_isomorph()
+
+        # treat CLEBSCH case separately, Sage has tools
+        if B == "g:12131415162728292a373b3c3d484b4e4f595c5e5g6a6d6f6g7e7f7g8c8d8g9b9d9fabacaebgcfde" and Tg == Tau:
+            Bgraph = graphs.ClebschGraph()
+        else:
+            Bg = Flag(B)
+            Bg = Bg.minimal_isomorph()
+            Bg = Bg.__repr__()
+            Bgraph = Graph(make_number(Bg[0]))
+            for i in range(2,len(B),2):
+                Bgraph.add_edge((make_number(Bg[i])-1, make_number(Bg[i+1])-1))
+
+        # compute neighbourhoods for vertices in B intersected with embedding of Tau (by strong_hom)
+        attachments_in_T = list()
+        for v in Bgraph.vertices():
+            vneigh =  Bgraph.vertex_boundary({v})
+            attachments_in_T.append(strong_hom.intersection(vneigh))
+
+        witness = list()
+        for i in range(len(attachments_in_T)-1):
+            for j in range(i+1,len(attachments_in_T)):
+                if attachments_in_T[i] == attachments_in_T[j]:
+                    witness.append((i,j))
+                    witness.append(list(attachments_in_T[i]))
+
+        if not witness:
+            claim6 = True
+            print "\033[32m[OK]   \033[mDifferent vertices of B attach differently to an embedding of tau in B."
+        else:
+            print "\033[31m[FAIL] \033[mThere are two vertices", str(witness[0][0])+",",witness[0][1],"that attach to Tau in the same way:", str(witness[1])+"."
+
+
+    # Check if forbidding tau improves the bound
+    # ------------------------------------------
+    claim7 = False
+    
+    print "Verifying that forbidding tau improves the bound..."
+
+    if tau == "1:":
+        bound_tau = 0
+    else:
+        command = "sage -python inspect_certificate.py "+certificate_filename_tau+" --log"
+        try:
+            f = subprocess.call(command, shell=True)
+        except ValueError:
+            print "Ooops! Things went wrong! Bound probably not written into 'bound.txt'."
+
+        bfile = open("bound.txt", 'r')
+        bound_tau = Rational(bfile.readlines()[0])
+
+    if minimize == False and bound_tau < bound:
+        claim7 = True
+        print "\033[32m[OK]   \033[m"+str(bound), "= lambda(Forb(\cal F)) > lambda(Forb(\cal F and tau)) =", str(bound_tau)+"."
+    elif minimize == True and bound_tau > bound:
+        claim7 = True
+        print "\033[32m[OK]   \033[m"+str(bound), "= lambda(Forb(\cal F)) < lambda(Forb(\cal F and tau)) =", str(bound_tau)+"."
+    else:
+        print "\033[31m[FAIL] \033[m"+str(bound), "= lambda(Forb(\cal F)) while lambda(Forb(\cal F and tau)) =", str(bound_tau)+"."
+
+        
+    # PERFECT STABILITY
+
+    # only hope for perfect stability, if problem robustly stable
+    if not (claim1 and claim2 and claim3 and claim4 and claim5 and claim6 and claim7):
+        raise ValueError("Robust stability has not been verified. Please do that first.")
+        sys.exit()
+
+    print "Robust stability verified!"
+    
+    # Verifying CLAIM 3: rk(Q_tau) = dim(Q_tau)-1
+    # ---------------------------------------------------
+    claimQ = False
+
+    Tgraph = Flag(tau)
+    Tgraph = Tgraph.minimal_isomorph()
+    itau = types.index(Tgraph)
+    dminus = numpy.array(Qs[itau]).shape[0]-1
+    Q_tau = [[0 for x in range(dminus+1)] for y in range(dminus+1)]
+    k = 0
+    for i in range(dminus+1):
+        for j in range(i,dminus+1):
+            Q_tau[i][j] = Qs[itau][i][j-i]
+            Q_tau[j][i] = Q_tau[i][j]
+        
+    Q_tau = matrix(QQ, Q_tau)
+    rk =  rank(Q_tau)
+
+    if rk == dminus:
+        claimQ = True
+        print "\033[32m[OK]   \033[mMatrix Q_tau has rk(Q_tau) = dim(Q_tau)-1 =", str(rk)+"."
+        print "Perfect stability verified! Done."
+    else:
+        print "\033[31m[FAIL] \033[mMatrix Q_tau has rank", rk, "and dim", str(dminus+1)+"."
+
+
+
+    if not claimQ:
+        # Check if forbidding B improves the bound (only if claimQ fails)
+        claimB = False
+
+        try:
+            certB_filename = args[5].strip()
+        except IOError:
+            print "You did not provide a certificate file to verify perfect stability. Giving up..."
+            sys.exit()
+
+        command = "sage -python inspect_certificate.py "+certB_filename+" --log"
+        try:
+            f = subprocess.call(command, shell=True)
+        except ValueError:
+            print "Ooops! Things went wrong! Bound probably not written into 'bound.txt'."
+
+        try:
+            bfile = open("bound.txt", 'r')
+            bound_tau = Rational(bfile.readlines()[0])
+            if minimize == False and bound_tau < bound:
+                claimB = True
+                print "\033[32m[OK]   \033[m"+str(bound), "= lambda(Forb(\cal F)) > lambda(Forb(\cal F and B)) =", str(bound_tau)+"."
+            elif minimize == True and bound_tau > bound:
+                claimB = True
+                print "\033[32m[OK]   \033[m"+str(bound), "= lambda(Forb(\cal F)) < lambda(Forb(\cal F and B)) =", str(bound_tau)+"."
+            else:
+                print "\033[31m[FAIL] \033[m"+str(bound), "= lambda(Forb(\cal F)) while lambda(Forb(\cal F and B)) =", str(bound_tau)+"."
+
+        except ValueError:
+            print "Couldn't open file bound.txt or read the bound."
