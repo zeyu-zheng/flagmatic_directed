@@ -1,3 +1,5 @@
+A modified version. Speicifically, changed oriented graph class to directed graph class to support digons.
+=============
 
 A version of Flagmatic with added functionality such as assumptions and stability checks. It is known to work with Sage-9.5.
 
