@@ -39,7 +39,7 @@ from copy import copy
 
 from .three_graph_flag import *
 from .graph_flag import *
-from .oriented_graph_flag import *
+from .directed_graph_flag import *
 from .construction import *
 
 
@@ -47,8 +47,8 @@ class BlowupConstruction(Construction):
 
     def __init__(self, g, weights=None, field=None, phantom_edge=None, no_symmetry=False):
 
-        if g.oriented and g.is_degenerate:
-            raise NotImplementedError("degenerate oriented graphs not supported.")
+        if g.directed and g.is_degenerate:
+            raise NotImplementedError("degenerate directed graphs not supported.")
 
         self._graph = copy(g)
         self._flag_cls = type(g)
@@ -76,8 +76,8 @@ class BlowupConstruction(Construction):
         self._use_symmetry = False
         if field is None and weights is None and phantom_edge is None:
             if g.n > 4 and not no_symmetry:
-                # Should probably allow OrientedGraphFlag
-                if type(g) is GraphFlag or type(g) is OrientedGraphFlag:
+                # Should probably allow DirectedGraphFlag
+                if type(g) is GraphFlag or type(g) is DirectedGraphFlag:
                     self._use_symmetry = True
 
     @property
@@ -351,7 +351,7 @@ def ThreeGraphBlowupConstruction(graph, **kwargs):
     return BlowupConstruction(graph, **kwargs)
 
 
-def OrientedGraphBlowupConstruction(graph, **kwargs):
+def DirectedGraphBlowupConstruction(graph, **kwargs):
     if isinstance(graph, str):
-        graph = OrientedGraphFlag(graph)
+        graph = DirectedGraphFlag(graph)
     return BlowupConstruction(graph, **kwargs)

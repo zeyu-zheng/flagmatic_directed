@@ -37,7 +37,7 @@ cdef class HypergraphFlag (Flag):
 
 	cdef int _n
 	cdef int _r
-	cdef bint _oriented
+	cdef bint _directed
 	cdef int _multiplicity
 	cdef int _t
 	cdef readonly bint is_degenerate

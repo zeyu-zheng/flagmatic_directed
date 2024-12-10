@@ -63,19 +63,19 @@ from sage.modules.misc import gram_schmidt
 cdef class HypergraphFlag (Flag):
 
 
-        def __init__(self, representation=None, r=3, oriented=False, multiplicity=1):
+        def __init__(self, representation=None, r=3, directed=False, multiplicity=1):
         
-                if oriented and r != 2:
-                        raise NotImplementedError("only 2-graphs can be oriented.")
+                if directed and r != 2:
+                        raise NotImplementedError("only 2-graphs can be directed.")
                 
                 if multiplicity < 1:
                         raise ValueError
                 
-                if not isinstance(oriented, bool):
+                if not isinstance(directed, bool):
                         raise ValueError
                 
                 self._r = r
-                self._oriented = oriented
+                self._directed = directed
                 self._multiplicity = multiplicity
                 self._certified_minimal_isomorph = False
 
@@ -138,13 +138,13 @@ cdef class HypergraphFlag (Flag):
                         self._r = value
 
 
-        property oriented:
+        property directed:
                 """
                 Whether the order of vertices within an edge is significant.
                 """
 
                 def __get__(self):
-                        return self._oriented
+                        return self._directed
         
                 def __set__(self, value):
 
@@ -153,7 +153,7 @@ cdef class HypergraphFlag (Flag):
                         if not isinstance(value, bool):
                                 raise ValueError
                         
-                        self._oriented = value
+                        self._directed = value
 
 
         # TODO: sanity checking
@@ -391,7 +391,7 @@ cdef class HypergraphFlag (Flag):
                 ng = type(self)()
                 ng._n = self._n
                 ng._r = self._r
-                ng._oriented = self._oriented
+                ng._directed = self._directed
                 ng._multiplicity = self._multiplicity
                 ng._t = self._t
                 ng.ne = self.ne
@@ -411,13 +411,13 @@ cdef class HypergraphFlag (Flag):
         # TODO: check that this is best way to do this. What about is_degenerate, _certified_minimal_isomorph?
         
         def __reduce__(self):
-                return (type(self), (self._repr_(), self._r, self._oriented, self._multiplicity))
+                return (type(self), (self._repr_(), self._r, self._directed, self._multiplicity))
 
 
         # TODO: work out how to make sets of these work
         
         def __hash__(self):
-                return hash(self._repr_() + str(self._r) + str(self._oriented) + str(self._multiplicity))
+                return hash(self._repr_() + str(self._r) + str(self._directed) + str(self._multiplicity))
         
 
         # TODO: Handle < > (subgraph)
@@ -446,7 +446,7 @@ cdef class HypergraphFlag (Flag):
                 if self._r != other._r:
                         return False
 
-                if self._oriented != other._oriented:
+                if self._directed != other._directed:
                         return False
 
                 #  Should this be checked? 
@@ -470,14 +470,14 @@ cdef class HypergraphFlag (Flag):
 
 
         @classmethod
-        def default_density_graph(cls, r=3, oriented=False):
-                edge_graph = cls("%d:" % r, r, oriented)
+        def default_density_graph(cls, r=3, directed=False):
+                edge_graph = cls("%d:" % r, r, directed)
                 edge_graph.add_edge(range(1, r + 1))
                 return edge_graph
         
 
         @classmethod
-        def generate_flags(cls, n, tg, r=3, oriented=False, multiplicity=1, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
+        def generate_flags(cls, n, tg, r=3, directed=False, multiplicity=1, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
                 """
                 For an integer n, and a type tg, returns a list of all tg-flags on n
                 vertices, that satisfy certain constraints.
@@ -498,13 +498,13 @@ cdef class HypergraphFlag (Flag):
                 if not (r == 2 or r == 3):
                         raise NotImplementedError
                         
-                if oriented and r != 2:
+                if directed and r != 2:
                         raise NotImplementedError
         
                 if tg is None:
                         raise ValueError
         
-                if r != tg.r or oriented != tg.oriented:
+                if r != tg.r or directed != tg.directed:
                         raise ValueError
         
                 if tg.t != 0:
@@ -519,14 +519,18 @@ cdef class HypergraphFlag (Flag):
                         ntg = tg.__copy__()
                         ntg.t = s
                         return [ntg]
-        
-                max_ne = binomial(n - 1, r - 1) * multiplicity
-                max_e = binomial(n, r) * multiplicity
+                
+                if directed :
+                        max_ne = 2 * binomial(n - 1, r - 1) * multiplicity
+                        max_e = 2 * binomial(n, r) * multiplicity
+                else:
+                        max_ne = binomial(n - 1, r - 1) * multiplicity
+                        max_e = binomial(n, r) * multiplicity
                 
                 new_graphs = []
                 hashes = set()
                 
-                smaller_graphs = cls.generate_flags(n - 1, tg, r, oriented, multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
+                smaller_graphs = cls.generate_flags(n - 1, tg, r, directed, multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
                 
                 possible_edges = []
@@ -538,7 +542,7 @@ cdef class HypergraphFlag (Flag):
                 elif r == 2:
                         for x in range(1, n):
                                 possible_edges.append((x, n))
-                                if oriented:
+                                if directed:
                                         possible_edges.append((n, x))
         
                 if multiplicity > 1:
@@ -553,13 +557,13 @@ cdef class HypergraphFlag (Flag):
                         for ne in range(maxd, max_ne + 1):
                         
                                 for nb in Combinations(possible_edges, ne):
-        
-                                        # For oriented graphs, can't have bidirected edges.
+                                        """
+                                        # For directed graphs, can't have bidirected edges.
                                         # TODO: exclude these in a more efficient way!
-                                        if oriented:
+                                        if directed:
                                                 if any(e in nb and (e[1], e[0]) in nb for e in possible_edges):
                                                         continue
-                                                        
+                                        """                
                                         ng = sg.__copy__()
                                         ng.n = n
                                         for e in nb:
@@ -584,8 +588,8 @@ cdef class HypergraphFlag (Flag):
 
 
         @classmethod
-        def generate_graphs(cls, n, r=3, oriented=False, multiplicity=1, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return cls.generate_flags(n, cls(r=r, oriented=oriented, multiplicity=multiplicity), r, oriented, multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
+        def generate_graphs(cls, n, r=3, directed=False, multiplicity=1, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
+                return cls.generate_flags(n, cls(r=r, directed=directed, multiplicity=multiplicity), r, directed, multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
 
 
@@ -787,13 +791,13 @@ cdef class HypergraphFlag (Flag):
 
         def complement(self, minimal=False):
                 """
-                Returns the complement of the graph. Not implemented for oriented graphs.
+                Returns the complement of the graph. Not implemented for directed graphs.
                 If minimal=True, the minimal representative from the isomorphism class is
                 returned.
                 """
                 
-                if self.oriented:
-                        raise NotImplementedError("Cannot take complements of oriented graphs.")
+                if self.directed:
+                        raise NotImplementedError("Cannot take complements of directed graphs.")
 
                 if self.multiplicity != 1:
                         raise NotImplementedError("Cannot take complements of multigraphs.")
@@ -915,7 +919,7 @@ cdef class HypergraphFlag (Flag):
         
                 self._require_mutable()
         
-                raw_minimize_edges(self._edges, self.ne, self._r, self._oriented)
+                raw_minimize_edges(self._edges, self.ne, self._r, self._directed)
 
 
         def make_minimal_isomorph(self):
@@ -944,7 +948,7 @@ cdef class HypergraphFlag (Flag):
                         for j in range(self._r * self.ne):
                                 new_edges[j] = p[self._n * i + self._edges[j] - 1]
                 
-                        raw_minimize_edges(new_edges, self.ne, self._r, self._oriented)
+                        raw_minimize_edges(new_edges, self.ne, self._r, self._directed)
         
                         if i == 0:
                                 for j in range(self._r * self.ne):
@@ -1010,7 +1014,7 @@ cdef class HypergraphFlag (Flag):
 
                 ig.n = num_verts
                 ig.r = self._r
-                ig.oriented = self._oriented
+                ig.directed = self._directed
                 ig.multiplicity = self._multiplicity
                 ig.t = 0
 
@@ -1074,7 +1078,7 @@ cdef class HypergraphFlag (Flag):
                 if self.is_degenerate:
                         raise NotImplementedError("degenerate graphs are not supported.")
 
-                if self._r != h._r or self._oriented != h._oriented:
+                if self._r != h._r or self._directed != h._directed:
                         raise ValueError
                         
                 new_edges = <int *> malloc (sizeof(int) * self._r * self.ne)
@@ -1118,7 +1122,7 @@ cdef class HypergraphFlag (Flag):
                                                         continue
                                                 if (h._edges[2 * j] == new_edges[2 * k]
                                                         and h._edges[2 * j + 1] == new_edges[2 * k + 1]) or (
-                                                        not self._oriented and (h._edges[2 * j] == new_edges[2 * k + 1]
+                                                        not self._directed and (h._edges[2 * j] == new_edges[2 * k + 1]
                                                         and h._edges[2 * j + 1] == new_edges[2 * k])):
                                                         got_edge = 1
                                                         can_use[k] = 0
@@ -1285,7 +1289,7 @@ cdef class HypergraphFlag (Flag):
                 degenerate graphs. 
                 """
 
-                if self._oriented and self.is_degenerate:
+                if self._directed and self.is_degenerate:
                         raise NotImplementedError
 
                 if self.multiplicity != 1:
@@ -1332,7 +1336,7 @@ cdef class HypergraphFlag (Flag):
 
         def degenerate_induced_subgraph(self, verts):
 
-                if self._oriented and self.is_degenerate:
+                if self._directed and self.is_degenerate:
                         raise NotImplementedError
                 
                 if self.multiplicity != 1:
@@ -1358,7 +1362,7 @@ cdef class HypergraphFlag (Flag):
                 ng = type(self)()
                 ng.n = len(vertices)
                 ng.r = self._r
-                ng.oriented = self._oriented
+                ng.directed = self._directed
                 ng.t = 0
                 
                 if self._r == 3:
@@ -1384,7 +1388,7 @@ cdef class HypergraphFlag (Flag):
 
         def degenerate_edge_density(self):
 
-                if self._oriented:
+                if self._directed:
                         raise NotImplementedError
                 
                 if self._r == 3:
@@ -1399,7 +1403,7 @@ cdef class HypergraphFlag (Flag):
                 graphs isomorphic to H, divided by binomial(n, k).
                 """
 
-                if self.oriented and self.is_degenerate:
+                if self.directed and self.is_degenerate:
                         raise NotImplementedError
 
                 if h.is_degenerate:
@@ -1638,7 +1642,7 @@ cdef class HypergraphFlag (Flag):
 #
 
 
-cdef void raw_minimize_edges(int *edges, int m, int r, bint oriented):
+cdef void raw_minimize_edges(int *edges, int m, int r, bint directed):
 
         cdef int i
         cdef int *e
@@ -1686,7 +1690,7 @@ cdef void raw_minimize_edges(int *edges, int m, int r, bint oriented):
 
         elif r == 2:
         
-                if oriented == False:
+                if directed == False:
                 
                         for i in range(m):
                                 e = &edges[i * 2]

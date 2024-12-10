@@ -37,7 +37,7 @@ cdef class MultigraphFlag (HypergraphFlag):
 
 
         def __init__(self, multiplicity=1, representation=None):
-                super(MultigraphFlag, self).__init__(representation=representation, r=2, oriented=False, multiplicity=multiplicity)
+                super(MultigraphFlag, self).__init__(representation=representation, r=2, directed=False, multiplicity=multiplicity)
 
 
         def __reduce__(self):
@@ -51,13 +51,13 @@ cdef class MultigraphFlag (HypergraphFlag):
 
         @classmethod
         def generate_flags(cls, n, tg, multiplicity=1, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return HypergraphFlag.generate_flags(n, tg, r=2, oriented=False, multiplicity=multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
+                return HypergraphFlag.generate_flags(n, tg, r=2, directed=False, multiplicity=multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
 
 
         @classmethod
         def generate_graphs(cls, n, multiplicity=1, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return HypergraphFlag.generate_flags(n, cls(), r=2, oriented=False, multiplicity=multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
+                return HypergraphFlag.generate_flags(n, cls(), r=2, directed=False, multiplicity=multiplicity, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
 
 
@@ -87,7 +87,7 @@ cdef class MultigraphFlag (HypergraphFlag):
 cdef class TwoMultigraphFlag (MultigraphFlag):
 
         def __init__(self, representation=None):
-                super(MultigraphFlag, self).__init__(representation=representation, r=2, oriented=False, multiplicity=2)
+                super(MultigraphFlag, self).__init__(representation=representation, r=2, directed=False, multiplicity=2)
 
 
         @classmethod
@@ -101,20 +101,20 @@ cdef class TwoMultigraphFlag (MultigraphFlag):
 
         @classmethod
         def generate_flags(cls, n, tg, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return HypergraphFlag.generate_flags(n, tg, r=2, oriented=False, multiplicity=2, forbidden_edge_numbers=forbidden_edge_numbers,
+                return HypergraphFlag.generate_flags(n, tg, r=2, directed=False, multiplicity=2, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
 
 
         @classmethod
         def generate_graphs(cls, n, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return HypergraphFlag.generate_flags(n, cls(), r=2, oriented=False, multiplicity=2, forbidden_edge_numbers=forbidden_edge_numbers,
+                return HypergraphFlag.generate_flags(n, cls(), r=2, directed=False, multiplicity=2, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
 
 
 cdef class ThreeMultigraphFlag (MultigraphFlag):
 
         def __init__(self, representation=None):
-                super(MultigraphFlag, self).__init__(representation=representation, r=2, oriented=False, multiplicity=3)
+                super(MultigraphFlag, self).__init__(representation=representation, r=2, directed=False, multiplicity=3)
 
 
         @classmethod
@@ -128,11 +128,11 @@ cdef class ThreeMultigraphFlag (MultigraphFlag):
 
         @classmethod
         def generate_flags(cls, n, tg, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return HypergraphFlag.generate_flags(n, tg, r=2, oriented=False, multiplicity=3, forbidden_edge_numbers=forbidden_edge_numbers,
+                return HypergraphFlag.generate_flags(n, tg, r=2, directed=False, multiplicity=3, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)
 
 
         @classmethod
         def generate_graphs(cls, n, forbidden_edge_numbers=None, forbidden_graphs=None, forbidden_induced_graphs=None):
-                return HypergraphFlag.generate_flags(n, cls(), r=2, oriented=False, multiplicity=3, forbidden_edge_numbers=forbidden_edge_numbers,
+                return HypergraphFlag.generate_flags(n, cls(), r=2, directed=False, multiplicity=3, forbidden_edge_numbers=forbidden_edge_numbers,
                         forbidden_graphs=forbidden_graphs, forbidden_induced_graphs=forbidden_induced_graphs)

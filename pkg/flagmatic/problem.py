@@ -51,7 +51,7 @@ from .hypergraph_flag import make_graph_block, print_graph_block
 from .flag import *
 from .three_graph_flag import *
 from .graph_flag import *
-from .oriented_graph_flag import *
+from .directed_graph_flag import *
 from .multigraph_flag import *
 from .construction import *
 from .blowup_construction import *
@@ -148,7 +148,7 @@ class Problem(SageObject):
 
         sage: problem = GraphProblem()
         sage: problem = ThreeGraphProblem()
-        sage: problem = OrientedGraphProblem()
+        sage: problem = DirectedGraphProblem()
         sage: problem = TwoMultigraphProblem()
         sage: problem = ThreeMultigraphProblem()
 
@@ -822,17 +822,17 @@ class Problem(SageObject):
         
         if self._flag_cls().r == 2:
 
-            if self._flag_cls().oriented:
+            if self._flag_cls().directed:
                 
                 try:
-                    tg = OrientedGraphFlag(typegraph)
+                    tg = DirectedGraphFlag(typegraph)
                     tg.make_minimal_isomorph()
 
                     cst = Rational(const)
                     eq = equality
                     indep = False
 
-                    lcomb = [[OrientedGraphFlag(g), Rational(c)] for g,c in lincomb]
+                    lcomb = [[DirectedGraphFlag(g), Rational(c)] for g,c in lincomb]
                     for term in lcomb: term[0].make_minimal_isomorph()  # convert flag to the one Flagmatic knows
 
                     # if RHS nonzero, add a type to the LHS with -const coefficient (works with '0:' type as well)
@@ -848,7 +848,7 @@ class Problem(SageObject):
                                 if not is_in_lcomb:
                                     lcomb.append([H,-cst])
                         else:
-                            fg = OrientedGraphFlag(tg._repr_() + "("+str(tg.n)+")")
+                            fg = DirectedGraphFlag(tg._repr_() + "("+str(tg.n)+")")
                             lcomb.append([fg, -cst])
 
                     cst = 0 # make RHS zero. (not necessary though, not used again)
@@ -2200,8 +2200,8 @@ class Problem(SageObject):
         if flags.n != self._n:
             raise ValueError
 
-        if self._flag_cls().oriented:
-            if not ("oriented %d-graph" % self._flag_cls().r) in flags.description:
+        if self._flag_cls().directed:
+            if not ("directed %d-graph" % self._flag_cls().r) in flags.description:
                 raise ValueError
         else:
             if not ("%d-graph" % self._flag_cls().r) in flags.description:
@@ -3883,14 +3883,14 @@ def GraphProblem(order=None, **kwargs):
     return Problem(GraphFlag, order, **kwargs)
 
 
-def OrientedGraphProblem(order=None, **kwargs):
+def DirectedGraphProblem(order=None, **kwargs):
     r"""
-    Returns a Problem object, that will represent a Turán-type oriented graph problem. For
+    Returns a Problem object, that will represent a Turán-type directed graph problem. For
     help with Problem objects, enter
 
     sage: help(Problem)
     """
-    return Problem(OrientedGraphFlag, order, **kwargs)
+    return Problem(DirectedGraphFlag, order, **kwargs)
 
 
 def TwoMultigraphProblem(order=None, **kwargs):
